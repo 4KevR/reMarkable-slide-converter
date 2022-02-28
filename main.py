@@ -1,6 +1,9 @@
 # reMarkableSlidePDF - Kevin Wiesner
 # ------------------------------------------------------ #
+import fnmatch
 import io
+import json
+import yaml
 import os
 import uuid
 
@@ -8,45 +11,29 @@ from PyPDF2 import PdfFileWriter, PdfFileReader
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-# ------------------------------------------------------ #
-# user settings
-
-# file
-DIRECTORY_TO_CONVERT = "./ToConvert/"
-DIRECTORY_CONVERTED = "./Converted/"
-
-# DIRECTORY_TO_CONVERT_UUID = "" - not relevant yet
-DIRECTORY_CONVERTED_UUID = ""
-REMARKABLE_XOCHITL_DIR = "/home/root/.local/share/remarkable/xochitl/"
-
-FILEMODE = 0
-
-# when FILEMODE = 0, specify directory to which the converted file should be saved
-# when FILEMODE = 1, specify uuid4 of a reMarkable directory to which the converted file should be saved
-
-# page
-PAGE_SIZE = (223 * mm, 297 * mm)
-SQUARE_SIZE = int(5 * mm)
-DISPLAY_WIDTH = 205 * mm
-
 
 # ------------------------------------------------------ #
 # functions
+def load_config() -> dict:
+    with open("config.yaml", "r") as ymlfile:
+        return yaml.load(ymlfile, Loader=yaml.Loader)
+
+
 def create_page_canvas(rect_size) -> io.BytesIO:
     # byte buffer
     new_packet = io.BytesIO()
 
     # new canvas
-    c = canvas.Canvas(new_packet, pagesize=PAGE_SIZE)
+    c = canvas.Canvas(new_packet, pagesize=page_size)
     c.setStrokeGray(0.5)
 
     # draw vertical lines
-    for y_line_pos in range(0, int(PAGE_SIZE[1]), SQUARE_SIZE):
-        c.line(display_left_margin, y_line_pos, PAGE_SIZE[0], y_line_pos)
+    for y_line_pos in range(0, int(page_size[1]), square_size):
+        c.line(display_left_margin, y_line_pos, page_size[0], y_line_pos)
 
     # draw horizontal lines
-    for x_line_pos in range(int(display_left_margin), int(PAGE_SIZE[0]), SQUARE_SIZE):
-        c.line(x_line_pos, 0, x_line_pos, PAGE_SIZE[1])
+    for x_line_pos in range(int(display_left_margin), int(page_size[0]), square_size):
+        c.line(x_line_pos, 0, x_line_pos, page_size[1])
 
     # setting for white background
     c.setFillGray(1)
@@ -54,7 +41,7 @@ def create_page_canvas(rect_size) -> io.BytesIO:
 
     # draw white rect for transparent pdfs
     if rect_size[0] > rect_size[1]:  # Page in landscape format
-        c.rect(display_left_margin, PAGE_SIZE[1] - rect_size[1], rect_size[0], rect_size[1], fill=1)
+        c.rect(display_left_margin, page_size[1] - rect_size[1], rect_size[0], rect_size[1], fill=1)
     else:  # Page in portrait format
         c.rect(display_left_margin, 0, rect_size[1], rect_size[0], fill=1)
 
@@ -68,83 +55,97 @@ def create_page_canvas(rect_size) -> io.BytesIO:
 # code
 
 if __name__ == "__main__":
-    display_left_margin = PAGE_SIZE[0] - DISPLAY_WIDTH
+    cfg = load_config()
 
-    directory = os.fsencode(DIRECTORY_TO_CONVERT)
+    page_size = (cfg["page"]["size"][0]*mm, cfg["page"]["size"][1]*mm)
+    display_width = cfg["page"]["display_width"] * mm
+    square_size = int(cfg["page"]["square_size"] * mm)
 
-    # loop over all files in specified directory
-    for file in os.listdir(directory):
-        filename = os.fsencode(file).decode("utf-8")
-        if filename.endswith(".pdf"):  # only use .pdf files
-            print("Converting", filename, "...")
+    display_left_margin = page_size[0] - display_width
 
-            # open pdf and prepare output
-            existing_pdf = PdfFileReader(open(DIRECTORY_TO_CONVERT + filename, "rb"))
-            output = PdfFileWriter()
+    xochitl_directory = cfg["system"]["reMarkable"]["xochitl_directory"]
+    system_config, filemode = (cfg["system"]["local"], 0) if not os.path.isdir(xochitl_directory)\
+        else (cfg["system"]["reMarkable"], 1)
 
-            # loop over every page of current pdf
-            for page_number in range(existing_pdf.getNumPages()):
-                modified_page = existing_pdf.getPage(page_number)
-                size_modified = tuple(map(float, modified_page.mediaBox.upperRight))  # page size
-                if size_modified[0] > size_modified[1]:  # Page in landscape format
-                    rotation = 0
-                    scale_factor = DISPLAY_WIDTH / size_modified[0]
-                    x_pos = display_left_margin
-                    y_pos = PAGE_SIZE[1] - (size_modified[1] * scale_factor)
-                else:  # Page in portrait format
-                    rotation = 90
-                    scale_factor = DISPLAY_WIDTH / size_modified[1]
-                    x_pos = PAGE_SIZE[0]
-                    y_pos = 0
+    if filemode:
+        files = []
+        for file in fnmatch.filter(os.listdir(xochitl_directory), "*.metadata"):
+            with open(os.path.join(xochitl_directory, file), "r") as metadata_file:
+                metadata = json.load(metadata_file)
+                if metadata["parent"] == system_config["directory_to_convert"]:
+                    files.append(os.path.join(xochitl_directory, file.replace(".metadata", ".pdf")))
+    else:
+        files = fnmatch.filter(os.listdir(system_config["directory_to_convert"]), "*.pdf")
 
-                # create background
-                packet = create_page_canvas(tuple(map(lambda dimension: dimension * scale_factor, size_modified)))
+    # loop over all pdf-files in specified directory
+    for file in files:
+        filename = os.path.basename(file)
+        print("Converting", filename, "...")
 
-                # open background in reader and get size of page
-                squared_page = PdfFileReader(packet)
-                size_squared = tuple(map(float, squared_page.getPage(0).mediaBox.upperRight))
+        # open pdf and prepare output
+        existing_pdf = PdfFileReader(open(os.path.join(system_config["directory_to_convert"], filename), "rb"))
+        output = PdfFileWriter()
 
-                # merge background with pdf page
-                page = squared_page.getPage(0)
-                page.mergeRotatedScaledTranslatedPage(modified_page, rotation, scale_factor, x_pos, y_pos)
-                page.compressContentStreams()
-                output.addPage(page)
+        # loop over every page of current pdf
+        for page_number in range(existing_pdf.getNumPages()):
+            modified_page = existing_pdf.getPage(page_number)
+            size_modified = tuple(map(float, modified_page.mediaBox.upperRight))  # page size
+            if size_modified[0] > size_modified[1]:  # Page in landscape format
+                rotation = 0
+                scale_factor = display_width / size_modified[0]
+                x_pos = display_left_margin
+                y_pos = page_size[1] - (size_modified[1] * scale_factor)
+            else:  # Page in portrait format
+                rotation = 90
+                scale_factor = display_width / size_modified[1]
+                x_pos = page_size[0]
+                y_pos = 0
 
-            # write output pdf to specified directory
-            if not FILEMODE:
-                file_directory = DIRECTORY_CONVERTED + filename
-            else:
-                # generate uuid4 for the name of the pdf in the reMarkable filesystem (not visible name)
-                file_uuid = str(uuid.uuid4())
-                file_directory = REMARKABLE_XOCHITL_DIR + file_uuid + ".pdf"
+            # create background
+            packet = create_page_canvas(tuple(map(lambda dimension: dimension * scale_factor, size_modified)))
 
-                # create general content data
-                with open(REMARKABLE_XOCHITL_DIR + file_uuid + ".content", "w") as content:
-                    with open("./Templates/contentTemplate.json", "r") as contentTemplate:
-                        content_to_write = contentTemplate.read()
-                        content_to_write = content_to_write.replace("XX-PAGE-COUNT-XX", str(existing_pdf.getNumPages()))
-                        content.write(content_to_write)
+            # open background in reader and get size of page
+            squared_page = PdfFileReader(packet)
+            size_squared = tuple(map(float, squared_page.getPage(0).mediaBox.upperRight))
 
-                # create general metadata for pdf
-                with open(REMARKABLE_XOCHITL_DIR + file_uuid + ".metadata", "w") as metadata:
-                    with open("./Templates/metadataTemplate.json", "r") as metadataTemplate:
-                        metadata_to_write = metadataTemplate.read()
-                        metadata_to_write = metadata_to_write.replace("XX-PARENT-XX", DIRECTORY_CONVERTED_UUID)
-                        metadata_to_write = metadata_to_write.replace("XX-VISIBLE-FILENAME-XX", filename.replace(".pdf", ""))
-                        metadata.write(metadata_to_write)
+            # merge background with pdf page
+            page = squared_page.getPage(0)
+            page.mergeRotatedScaledTranslatedPage(modified_page, rotation, scale_factor, x_pos, y_pos)
+            page.compressContentStreams()
+            output.addPage(page)
 
-            # log the creation of the file (saving the directory)
-            with open("./file-log.txt", "a") as log:
-                extend_log = "\n" + file_directory
-                log.write(extend_log)
-
-            # save pdf
-            output_stream = open(file_directory, "wb")
-            output.write(output_stream)
-            output_stream.close()
+        # write output pdf to specified directory
+        if not filemode:
+            file_directory = system_config["directory_converted"] + filename
         else:
-            print(filename, "is not a PDF")
+            # generate uuid4 for the name of the pdf in the reMarkable filesystem (not visible name)
+            file_uuid = str(uuid.uuid4())
+            file_directory = xochitl_directory + file_uuid + ".pdf"
 
+            # create general content data
+            with open(xochitl_directory + file_uuid + ".content", "w") as content:
+                with open("./Templates/contentTemplate.json", "r") as contentTemplate:
+                    content_to_write = contentTemplate.read()
+                    content_to_write = content_to_write.replace("XX-PAGE-COUNT-XX", str(existing_pdf.getNumPages()))
+                    content.write(content_to_write)
+
+            # create general metadata for pdf
+            with open(xochitl_directory + file_uuid + ".metadata", "w") as metadata:
+                with open("./Templates/metadataTemplate.json", "r") as metadataTemplate:
+                    metadata_to_write = metadataTemplate.read()
+                    metadata_to_write = metadata_to_write.replace("XX-PARENT-XX", system_config["directory_converted"])
+                    metadata_to_write = metadata_to_write.replace("XX-VISIBLE-FILENAME-XX", filename.replace(".pdf", ""))
+                    metadata.write(metadata_to_write)
+
+        # log the creation of the file (saving the directory)
+        with open("./file-log.txt", "a") as log:
+            extend_log = "\n" + file_directory
+            log.write(extend_log)
+
+        # save pdf
+        output_stream = open(file_directory, "wb")
+        output.write(output_stream)
+        output_stream.close()
 
 # code END
 # -------------------------------------------------

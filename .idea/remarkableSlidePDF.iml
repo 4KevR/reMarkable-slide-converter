@@ -5,7 +5,7 @@
       <excludeFolder url="file://$MODULE_DIR$/Converted" />
       <excludeFolder url="file://$MODULE_DIR$/ToConvert" />
     </content>
-    <orderEntry type="inheritedJdk" />
+    <orderEntry type="jdk" jdkName="Python 3.8 (base)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
 </module>

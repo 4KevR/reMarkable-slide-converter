@@ -1,0 +1,15 @@
+system:
+  local:
+    directory_to_convert: ./ToConvert/
+    directory_converted: ./Converted/
+  reMarkable:
+    xochitl_directory: /home/root/.local/share/remarkable/xochitl/
+    directory_to_convert: 75a7f665-56aa-4385-9776-a6edf26bfc83
+    directory_converted: 70da10fc-e233-4906-9bec-44e09a8134e6
+page:
+  size:
+    - 223
+    - 297
+  square_size: 5
+  display_width: 205
+
