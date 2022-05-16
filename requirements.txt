@@ -1,4 +1,6 @@
-pypdf2~=1.26.0
-reportlab~=3.6.5
-yaml~=0.2.5
-pyyaml~=5.4.1
+yaml>=0.2.5
+pyyaml>=5.4.1
+pypdf2>=1.26.0
+reportlab>=3.6.5
+pillow>=8.2.0
+PyMuPDF>=1.19.6

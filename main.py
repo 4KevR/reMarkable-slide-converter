@@ -3,6 +3,7 @@
 import fnmatch
 import io
 import json
+
 import yaml
 import os
 import uuid
@@ -10,6 +11,9 @@ import uuid
 from PyPDF2 import PdfFileWriter, PdfFileReader
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
+
+import fitz
+from PIL import Image, ImageOps
 
 
 # ------------------------------------------------------ #
@@ -25,7 +29,18 @@ def create_page_canvas(rect_size) -> io.BytesIO:
 
     # new canvas
     c = canvas.Canvas(new_packet, pagesize=page_size)
-    c.setStrokeGray(0.5)
+    if page_color_mode["inverted_write_area"]:
+        # setting for dark mode
+        c.setStrokeGray(0)
+        c.setFillGray(0)
+    else:
+        # setting for white mode
+        c.setFillGray(1)
+        c.setStrokeGray(1)
+
+    c.rect(0, 0, page_size[0], page_size[1], fill=1)
+
+    c.setStrokeGray(0.4)
 
     # draw vertical lines
     for y_line_pos in range(0, int(page_size[1]), square_size):
@@ -35,16 +50,16 @@ def create_page_canvas(rect_size) -> io.BytesIO:
     for x_line_pos in range(int(display_left_margin), int(page_size[0]), square_size):
         c.line(x_line_pos, 0, x_line_pos, page_size[1])
 
-    # setting for white background
-    c.setFillGray(1)
-    c.setStrokeGray(1)
+    if page_color_mode["inverted_pdf"]:
+        c.setFillGray(0)
+    else:
+        c.setFillGray(1)
 
     # draw white rect for transparent pdfs
     if rect_size[0] > rect_size[1]:  # Page in landscape format
         c.rect(display_left_margin, page_size[1] - rect_size[1], rect_size[0], rect_size[1], fill=1)
     else:  # Page in portrait format
         c.rect(display_left_margin, 0, rect_size[1], rect_size[0], fill=1)
-
     # save canvas
     c.save()
 
@@ -60,6 +75,7 @@ if __name__ == "__main__":
     page_size = (cfg["page"]["size"][0]*mm, cfg["page"]["size"][1]*mm)
     display_width = cfg["page"]["display_width"] * mm
     square_size = int(cfg["page"]["square_size"] * mm)
+    page_color_mode = cfg["page"]["color"]
 
     display_left_margin = page_size[0] - display_width
 
@@ -90,6 +106,16 @@ if __name__ == "__main__":
         # loop over every page of current pdf
         for page_number in range(existing_pdf.getNumPages()):
             modified_page = existing_pdf.getPage(page_number)
+            if page_color_mode["inverted_pdf"]:
+                doc = fitz.open(os.path.join(system_config["directory_to_convert"], filename))
+                image_page = doc.load_page(page_number)
+                pix = image_page.get_pixmap(dpi=800)
+                mode = 'RGBA' if pix.alpha else 'RGB'
+                img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+                img_inv = ImageOps.invert(img)
+                img_packet = io.BytesIO()
+                img_inv.save(img_packet, "PDF")
+                modified_page = PdfFileReader(img_packet).getPage(0)
             size_modified = tuple(map(float, modified_page.mediaBox.upperRight))  # page size
             if size_modified[0] > size_modified[1]:  # Page in landscape format
                 rotation = 0

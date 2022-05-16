@@ -14,5 +14,5 @@ page:
   square_size: 5
   display_width: 205
   color:
-    inverted_pdf:
-    inverted_write_area:
+    inverted_pdf: false
+    inverted_write_area: false
