@@ -1,0 +1,18 @@
+system:
+  local:
+    directory_to_convert: ./ToConvert/
+    directory_converted: ./Converted/
+  reMarkable:
+    directory_to_convert: /home/root/.local/share/remarkable/xochitl/
+    parent_to_convert:
+    directory_converted:
+    execute_xochitl_restart:
+page:
+  size:
+    - 223
+    - 297
+  square_size: 5
+  display_width: 205
+  color:
+    inverted_pdf:
+    inverted_write_area:

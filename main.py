@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
     display_left_margin = page_size[0] - display_width
 
-    xochitl_directory = cfg["system"]["reMarkable"]["xochitl_directory"]
+    xochitl_directory = cfg["system"]["reMarkable"]["directory_to_convert"]
     system_config, filemode = (cfg["system"]["local"], 0) if not os.path.isdir(xochitl_directory)\
         else (cfg["system"]["reMarkable"], 1)
 
@@ -72,13 +72,14 @@ if __name__ == "__main__":
         for file in fnmatch.filter(os.listdir(xochitl_directory), "*.metadata"):
             with open(os.path.join(xochitl_directory, file), "r") as metadata_file:
                 metadata = json.load(metadata_file)
-                if metadata["parent"] == system_config["directory_to_convert"]:
-                    files.append(os.path.join(xochitl_directory, file.replace(".metadata", ".pdf")))
+                if metadata["parent"] == system_config["parent_to_convert"]:
+                    visible_filename = metadata["visibleName"]
+                    files.append((os.path.join(xochitl_directory, file.replace(".metadata", ".pdf")), visible_filename))
     else:
-        files = fnmatch.filter(os.listdir(system_config["directory_to_convert"]), "*.pdf")
+        files = list(map(lambda x: (x, x), fnmatch.filter(os.listdir(system_config["directory_to_convert"]), "*.pdf")))
 
     # loop over all pdf-files in specified directory
-    for file in files:
+    for (file, visible_filename) in files:
         filename = os.path.basename(file)
         print("Converting", filename, "...")
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
                 with open("./Templates/metadataTemplate.json", "r") as metadataTemplate:
                     metadata_to_write = metadataTemplate.read()
                     metadata_to_write = metadata_to_write.replace("XX-PARENT-XX", system_config["directory_converted"])
-                    metadata_to_write = metadata_to_write.replace("XX-VISIBLE-FILENAME-XX", filename.replace(".pdf", ""))
+                    metadata_to_write = metadata_to_write.replace("XX-VISIBLE-FILENAME-XX", visible_filename)
                     metadata.write(metadata_to_write)
 
         # log the creation of the file (saving the directory)
@@ -146,6 +147,9 @@ if __name__ == "__main__":
         output_stream = open(file_directory, "wb")
         output.write(output_stream)
         output_stream.close()
+
+    if filemode and system_config["execute_xochitl_restart"]:
+        os.system("systemctl restart xochitl")
 
 # code END
 # -------------------------------------------------
