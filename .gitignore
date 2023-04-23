@@ -1,8 +1,10 @@
-*.jpg
-
 Converted
 ToConvert
 
 file-log.txt
 
 config.yaml
+
+env
+
+.DS_Store
